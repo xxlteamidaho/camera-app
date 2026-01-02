@@ -6,8 +6,8 @@ rtsp:
   listen: ":8554"
 
 streams:
-  # Direct RTSP from cameras (no NVR encryption overhead)
-  camera1: ${CAMERA_1_URL}
+  # Camera 1: native go2rtc handling (H264, no transcode needed)
+  camera1: "${CAMERA_1_URL}#backchannel=0"
   camera2: "ffmpeg:${CAMERA_2_URL}#video=h264"
   camera3: "ffmpeg:${CAMERA_3_URL}#video=h264"
   camera4: "ffmpeg:${CAMERA_4_URL}#video=h264"
