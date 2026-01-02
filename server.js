@@ -1,6 +1,6 @@
 const express = require('express');
-const { proxy } = require('rtsp-relay')(express());
 const app = express();
+const { proxy } = require('rtsp-relay')(app);
 const path = require('path');
 
 const port = process.env.PORT || 3000;
