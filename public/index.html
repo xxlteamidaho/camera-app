@@ -301,7 +301,7 @@
     </div>
 
     <!-- JSMpeg Player -->
-    <script src="https://jsmpeg.com/jsmpeg.min.js"></script>
+    <script src="/jsmpeg.min.js"></script>
     <script>
         // Weather code to emoji mapping
         const weatherIcons = {
@@ -411,15 +411,34 @@
                     const high = Math.round(data.daily.temperature_2m_max[i]);
                     const low = Math.round(data.daily.temperature_2m_min[i]);
 
-                    forecastEl.innerHTML += `
-                        <div class="forecast-item">
-                            <span class="forecast-day">${dayName}</span>
-                            <span class="forecast-icon">${icon}</span>
-                            <div class="forecast-temps">
-                                <span class="forecast-high">${high}°</span>
-                                <span class="forecast-low">${low}°</span>
-                            </div>
-                        </div>`;
+                    const item = document.createElement('div');
+                    item.className = 'forecast-item';
+
+                    const daySpan = document.createElement('span');
+                    daySpan.className = 'forecast-day';
+                    daySpan.textContent = dayName;
+
+                    const iconSpan = document.createElement('span');
+                    iconSpan.className = 'forecast-icon';
+                    iconSpan.textContent = icon;
+
+                    const tempsDiv = document.createElement('div');
+                    tempsDiv.className = 'forecast-temps';
+
+                    const highSpan = document.createElement('span');
+                    highSpan.className = 'forecast-high';
+                    highSpan.textContent = high + '°';
+
+                    const lowSpan = document.createElement('span');
+                    lowSpan.className = 'forecast-low';
+                    lowSpan.textContent = low + '°';
+
+                    tempsDiv.appendChild(highSpan);
+                    tempsDiv.appendChild(lowSpan);
+                    item.appendChild(daySpan);
+                    item.appendChild(iconSpan);
+                    item.appendChild(tempsDiv);
+                    forecastEl.appendChild(item);
                 }
 
             } catch (error) {

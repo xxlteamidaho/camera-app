@@ -1,3 +1,21 @@
 node_modules/
 .env
+.env.*
 .DS_Store
+
+# Security - keys and secrets
+*.pem
+*.key
+*_key
+*.p12
+*.pfx
+id_rsa*
+*.crt
+secrets/
+
+# Logs
+*.log
+logs/
+
+# Local config
+*.local
