@@ -7,20 +7,11 @@ const rateLimit = require('express-rate-limit');
 
 const port = process.env.PORT || 3000;
 
-// Security headers
+// Security headers (relaxed for WebSocket compatibility)
 app.use(helmet({
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-            fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            connectSrc: ["'self'", "wss:", "ws:", "https://api.open-meteo.com"],
-            imgSrc: ["'self'", "data:"],
-            frameSrc: ["'none'"],
-        },
-    },
+    contentSecurityPolicy: false, // Disable CSP to allow WebSocket streams
     crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
 // Rate limiting
