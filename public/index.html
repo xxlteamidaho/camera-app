@@ -299,7 +299,7 @@
 
                     // Use go2rtc's built-in player via iframe with buffering
                     const iframe = document.createElement('iframe');
-                    iframe.src = `http://${window.location.hostname}:1984/stream.html?src=${camera.stream}&mode=mse&buffer=1500`;
+                    iframe.src = `http://${window.location.hostname}:1984/stream.html?src=${camera.stream}&mode=mse&buffer=3000`;
                     iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:12px;background:#0a0a0a;';
                     iframe.allow = 'autoplay';
 
