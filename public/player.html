@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        * { margin: 0; padding: 0; }
+        html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+        video { width: 100%; height: 100%; object-fit: contain; }
+    </style>
+</head>
+<body>
+    <video id="video" autoplay muted playsinline></video>
+    <script>
+        const params = new URLSearchParams(location.search);
+        const src = params.get('src');
+        const video = document.getElementById('video');
+
+        function connect() {
+            const ws = new WebSocket(`ws://${location.hostname}:1984/api/ws?src=${src}`);
+            ws.binaryType = 'arraybuffer';
+
+            let ms, sb, queue = [];
+
+            ws.onopen = () => ws.send(JSON.stringify({type: 'mse'}));
+
+            ws.onmessage = (e) => {
+                if (typeof e.data === 'string') {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === 'mse') {
+                        ms = new MediaSource();
+                        video.src = URL.createObjectURL(ms);
+                        ms.addEventListener('sourceopen', () => {
+                            sb = ms.addSourceBuffer(msg.value);
+                            sb.mode = 'segments';
+                            sb.addEventListener('updateend', () => {
+                                if (queue.length && !sb.updating) {
+                                    sb.appendBuffer(queue.shift());
+                                }
+                            });
+                        });
+                        video.play().catch(() => {});
+                    }
+                } else {
+                    if (sb && !sb.updating && ms.readyState === 'open') {
+                        sb.appendBuffer(e.data);
+                    } else if (sb) {
+                        queue.push(e.data);
+                        if (queue.length > 50) queue.shift();
+                    }
+                }
+            };
+
+            ws.onclose = () => setTimeout(connect, 2000);
+            ws.onerror = () => ws.close();
+        }
+
+        connect();
+    </script>
+</body>
+</html>
