@@ -14,73 +14,50 @@
         const src = params.get('src');
         const video = document.getElementById('video');
 
-        let pc = null;
-        let reconnectDelay = 1000;
+        function connect() {
+            const ws = new WebSocket(`ws://${location.hostname}:1984/api/ws?src=${src}`);
+            ws.binaryType = 'arraybuffer';
 
-        async function connect() {
-            // Cleanup previous connection
-            if (pc) {
-                pc.close();
-                pc = null;
-            }
+            let ms, sb, queue = [];
 
-            try {
-                pc = new RTCPeerConnection({
-                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-                });
+            ws.onopen = () => ws.send(JSON.stringify({type: 'mse'}));
 
-                pc.ontrack = (event) => {
-                    video.srcObject = event.streams[0];
-                    video.play().catch(() => {});
-                };
-
-                pc.oniceconnectionstatechange = () => {
-                    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-                        console.log('ICE connection failed, reconnecting...');
-                        setTimeout(connect, reconnectDelay);
-                    }
-                };
-
-                // Create offer
-                pc.addTransceiver('video', { direction: 'recvonly' });
-                pc.addTransceiver('audio', { direction: 'recvonly' });
-
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-
-                // Wait for ICE gathering
-                await new Promise((resolve) => {
-                    if (pc.iceGatheringState === 'complete') {
-                        resolve();
-                    } else {
-                        pc.onicegatheringstatechange = () => {
-                            if (pc.iceGatheringState === 'complete') resolve();
+            ws.onmessage = (e) => {
+                if (typeof e.data === 'string') {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === 'mse') {
+                        ms = new MediaSource();
+                        video.src = URL.createObjectURL(ms);
+                        ms.onsourceopen = () => {
+                            sb = ms.addSourceBuffer(msg.value);
+                            sb.mode = 'segments';
+                            sb.onupdateend = flush;
                         };
-                        // Timeout after 3s
-                        setTimeout(resolve, 3000);
                     }
-                });
+                } else if (sb) {
+                    queue.push(e.data);
+                    flush();
+                }
+            };
 
-                // Send offer to go2rtc
-                const response = await fetch(`http://${location.hostname}:1984/api/webrtc?src=${src}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/sdp' },
-                    body: pc.localDescription.sdp
-                });
-
-                if (!response.ok) throw new Error('WebRTC setup failed');
-
-                const answer = await response.text();
-                await pc.setRemoteDescription({ type: 'answer', sdp: answer });
-
-                reconnectDelay = 1000;
-                console.log('WebRTC connected');
-
-            } catch (err) {
-                console.error('WebRTC error:', err);
-                reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
-                setTimeout(connect, reconnectDelay);
+            function flush() {
+                if (!sb.updating && queue.length > 0) {
+                    sb.appendBuffer(queue.shift());
+                }
+                // Keep video near live edge
+                if (video.buffered.length > 0) {
+                    const end = video.buffered.end(video.buffered.length - 1);
+                    if (end - video.currentTime > 3) {
+                        video.currentTime = end - 0.5;
+                    }
+                }
+                // Limit queue
+                while (queue.length > 20) queue.shift();
             }
+
+            video.oncanplay = () => video.play();
+            ws.onclose = () => setTimeout(connect, 2000);
+            ws.onerror = () => ws.close();
         }
 
         connect();
