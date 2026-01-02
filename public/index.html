@@ -41,58 +41,13 @@
             border: 1px solid rgba(255,255,255,0.05);
             box-shadow: 0 8px 32px rgba(0,0,0,0.4);
         }
-        .camera-header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-            z-index: 10;
-            border-radius: 12px 12px 0 0;
-        }
-        .camera-name {
-            font-weight: 600;
-            font-size: 0.85em;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            color: rgba(255,255,255,0.9);
-        }
-        canvas {
+        video {
             width: 100%;
             height: 100%;
             display: block;
             background-color: #0a0a0a;
             object-fit: contain;
             border-radius: 12px;
-        }
-        .status {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.7em;
-            font-weight: 500;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #888;
-            animation: pulse 2s infinite;
-        }
-        .status-dot.live {
-            background: #00ff88;
-            box-shadow: 0 0 10px #00ff88;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
         }
 
         /* Anti burn-in animations - very subtle */
@@ -300,8 +255,6 @@
         </div>
     </div>
 
-    <!-- JSMpeg Player -->
-    <script src="/jsmpeg.min.js"></script>
     <script>
         // Weather code to emoji mapping
         const weatherIcons = {
@@ -325,7 +278,10 @@
             95: 'Thunderstorm', 96: 'Thunderstorm with hail', 99: 'Severe thunderstorm'
         };
 
-        // Load cameras
+        // go2rtc API base URL (same host, port 1984)
+        const GO2RTC_API = `${window.location.protocol}//${window.location.hostname}:1984`;
+
+        // Load cameras using MSE (Media Source Extensions)
         async function loadCameras() {
             try {
                 const response = await fetch('/api/cameras');
@@ -341,20 +297,17 @@
                     const card = document.createElement('div');
                     card.className = 'camera-card';
 
-                    const canvas = document.createElement('canvas');
-                    canvas.id = `canvas-${camera.id}`;
+                    const video = document.createElement('video');
+                    video.id = `video-${camera.id}`;
+                    video.autoplay = true;
+                    video.muted = true;
+                    video.playsInline = true;
 
-                    card.appendChild(canvas);
+                    card.appendChild(video);
                     grid.appendChild(card);
 
-                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                    const wsUrl = `${protocol}//${window.location.host}/stream/${camera.id}`;
-
-                    new JSMpeg.Player(wsUrl, {
-                        canvas: canvas,
-                        autoplay: true,
-                        audio: false
-                    });
+                    // Connect to go2rtc MSE stream
+                    connectMSE(video, camera.stream);
                 });
 
             } catch (error) {
@@ -362,10 +315,56 @@
             }
         }
 
+        // Connect to go2rtc using MSE
+        function connectMSE(video, stream) {
+            const ws = new WebSocket(`ws://${window.location.hostname}:1984/api/ws?src=${stream}`);
+
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'mse', value: '' }));
+            };
+
+            ws.onmessage = async (event) => {
+                if (typeof event.data === 'string') {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'mse') {
+                        const mediaSource = new MediaSource();
+                        video.src = URL.createObjectURL(mediaSource);
+
+                        mediaSource.addEventListener('sourceopen', () => {
+                            const sourceBuffer = mediaSource.addSourceBuffer(msg.value);
+                            sourceBuffer.mode = 'segments';
+
+                            ws.onmessage = (e) => {
+                                if (e.data instanceof Blob) {
+                                    e.data.arrayBuffer().then(buffer => {
+                                        if (!sourceBuffer.updating && mediaSource.readyState === 'open') {
+                                            try {
+                                                sourceBuffer.appendBuffer(buffer);
+                                            } catch (err) {
+                                                console.log('Buffer error, reconnecting...');
+                                            }
+                                        }
+                                    });
+                                }
+                            };
+                        });
+                    }
+                }
+            };
+
+            ws.onerror = () => {
+                setTimeout(() => connectMSE(video, stream), 3000);
+            };
+
+            ws.onclose = () => {
+                setTimeout(() => connectMSE(video, stream), 3000);
+            };
+        }
+
         // Load weather data
         async function loadWeather() {
             try {
-                // Get user location or use default (Meridian, ID)
+                // Meridian, ID
                 let lat = 43.6121;
                 let lon = -116.3915;
                 let locationName = 'Meridian, ID';

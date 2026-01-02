@@ -1,72 +1,47 @@
 const express = require('express');
-const app = express();
-const { proxy } = require('rtsp-relay')(app);
 const path = require('path');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
+const app = express();
 const port = process.env.PORT || 3000;
 
-// Security headers (relaxed for WebSocket compatibility)
+// Security headers (relaxed for WebRTC)
 app.use(helmet({
-    contentSecurityPolicy: false, // Disable CSP to allow WebSocket streams
+    contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
 // Rate limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     standardHeaders: true,
     legacyHeaders: false,
 });
 app.use('/api/', limiter);
 
 // Parse camera configs from environment variables
-// Format: CAMERA_1_NAME=Backyard, CAMERA_1_URL=rtsp://...
 const cameras = [];
-let i = 1;
-while (process.env[`CAMERA_${i}_URL`]) {
-    cameras.push({
-        id: i,
-        name: process.env[`CAMERA_${i}_NAME`] || `Camera ${i}`,
-        url: process.env[`CAMERA_${i}_URL`]
-    });
-    i++;
-}
-
-// Fallback for testing if no env vars provided
-if (cameras.length === 0) {
-    if (process.env.NODE_ENV !== 'production') {
-        console.log('No cameras configured. Using test stream.');
+for (let i = 1; i <= 10; i++) {
+    if (process.env[`CAMERA_${i}_URL`]) {
         cameras.push({
-            id: 1,
-            name: 'Test Stream',
-            url: 'rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mp4'
+            id: i,
+            name: process.env[`CAMERA_${i}_NAME`] || `Camera ${i}`,
+            stream: `camera${i}`,
         });
     }
 }
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Endpoint to get list of cameras
+// API endpoint to get cameras
 app.get('/api/cameras', (req, res) => {
-    res.json(cameras.map(c => ({ id: c.id, name: c.name })));
-});
-
-// WebSocket relay for each camera (with validation)
-cameras.forEach(camera => {
-    if (Number.isInteger(camera.id) && camera.id > 0) {
-        app.ws(`/stream/${camera.id}`, proxy({
-            url: camera.url,
-            verbose: false,
-            transport: 'tcp',
-        }));
-    }
+    res.json(cameras);
 });
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-    console.log(`Cameras loaded: ${cameras.length}`);
+    console.log(`Web server running on port ${port}`);
+    console.log(`Cameras configured: ${cameras.length}`);
 });

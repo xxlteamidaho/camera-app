@@ -1,0 +1,15 @@
+api:
+  listen: ":1984"
+
+rtsp:
+  listen: ":8554"
+
+webrtc:
+  candidates:
+    - stun:8555
+
+streams:
+  camera1: ${CAMERA_1_URL}
+  camera2: ${CAMERA_2_URL}
+  camera3: ${CAMERA_3_URL}
+  camera4: ${CAMERA_4_URL}

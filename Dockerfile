@@ -1,9 +1,13 @@
 FROM node:18-alpine
 
-# Install FFmpeg
-RUN apk add --no-cache ffmpeg
+# Install dependencies and go2rtc
+RUN apk add --no-cache wget supervisor
 
-# Create non-root user for security
+# Download go2rtc binary
+RUN wget -O /usr/local/bin/go2rtc https://github.com/AlexxIT/go2rtc/releases/latest/download/go2rtc_linux_amd64 && \
+    chmod +x /usr/local/bin/go2rtc
+
+# Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 -G nodejs
 
@@ -19,17 +23,18 @@ RUN npm install --production
 # Copy app source
 COPY . .
 
-# Set ownership to non-root user
+# Create supervisor config
+RUN mkdir -p /etc/supervisor.d
+COPY supervisord.conf /etc/supervisor.d/app.ini
+
+# Set ownership
 RUN chown -R nodejs:nodejs /app
 
-# Switch to non-root user
-USER nodejs
-
-# Expose port
-EXPOSE 3000
+# Expose ports: 3000 (web), 1984 (go2rtc API), 8555 (WebRTC)
+EXPOSE 3000 1984 8555/udp
 
 # Set production environment
 ENV NODE_ENV=production
 
-# Start command
-CMD ["npm", "start"]
+# Start with supervisor (runs both go2rtc and node)
+CMD ["supervisord", "-c", "/etc/supervisor.d/app.ini", "-n"]
