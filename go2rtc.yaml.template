@@ -1,0 +1,12 @@
+api:
+  listen: ":1984"
+  origin: "*"
+
+rtsp:
+  listen: ":8554"
+
+streams:
+  camera1: "ffmpeg:${CAMERA_1_URL}#video=h264#raw=-fflags nobuffer -flags low_delay"
+  camera2: "ffmpeg:${CAMERA_2_URL}#video=h264#raw=-fflags nobuffer -flags low_delay"
+  camera3: "ffmpeg:${CAMERA_3_URL}#video=h264#raw=-fflags nobuffer -flags low_delay"
+  camera4: "ffmpeg:${CAMERA_4_URL}#video=h264#raw=-fflags nobuffer -flags low_delay"

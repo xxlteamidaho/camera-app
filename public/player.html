@@ -10,72 +10,48 @@
 <body>
     <video id="video" autoplay muted playsinline></video>
     <script>
-        const params = new URLSearchParams(location.search);
-        const stream = params.get('src');
+        const src = new URLSearchParams(location.search).get('src');
         const video = document.getElementById('video');
 
-        let pc = null;
-        let retryCount = 0;
+        function connect() {
+            const ws = new WebSocket(`ws://${location.hostname}:1984/api/ws?src=${src}`);
+            ws.binaryType = 'arraybuffer';
 
-        async function connect() {
-            if (pc) {
-                pc.close();
-                pc = null;
-            }
+            let ms, sb, queue = [];
 
-            try {
-                pc = new RTCPeerConnection({
-                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-                });
+            ws.onopen = () => ws.send(JSON.stringify({type: 'mse'}));
 
-                pc.ontrack = (event) => {
-                    video.srcObject = event.streams[0];
-                    video.play().catch(() => {});
-                    retryCount = 0;
-                };
-
-                pc.oniceconnectionstatechange = () => {
-                    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-                        setTimeout(connect, 2000);
+            ws.onmessage = (e) => {
+                if (typeof e.data === 'string') {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === 'mse') {
+                        ms = new MediaSource();
+                        video.src = URL.createObjectURL(ms);
+                        ms.onsourceopen = () => {
+                            sb = ms.addSourceBuffer(msg.value);
+                            sb.mode = 'segments';
+                            sb.onupdateend = flush;
+                        };
                     }
-                };
+                } else if (sb) {
+                    queue.push(e.data);
+                    flush();
+                }
+            };
 
-                pc.addTransceiver('video', { direction: 'recvonly' });
-                pc.addTransceiver('audio', { direction: 'recvonly' });
-
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-
-                // Wait for ICE candidates
-                await new Promise(resolve => {
-                    if (pc.iceGatheringState === 'complete') resolve();
-                    else pc.onicegatheringstatechange = () => {
-                        if (pc.iceGatheringState === 'complete') resolve();
-                    };
-                    setTimeout(resolve, 2000);
-                });
-
-                // Send to RTSPtoWebRTC
-                const response = await fetch(`http://${location.hostname}:8083/stream/${stream}/channel/0/webrtc?uuid=${stream}&channel=0`, {
-                    method: 'POST',
-                    body: new URLSearchParams({ data: btoa(pc.localDescription.sdp) })
-                });
-
-                if (!response.ok) throw new Error('WebRTC failed');
-
-                const answer = await response.text();
-                await pc.setRemoteDescription({
-                    type: 'answer',
-                    sdp: atob(answer)
-                });
-
-                console.log('WebRTC connected');
-
-            } catch (err) {
-                console.error('Error:', err);
-                retryCount++;
-                setTimeout(connect, Math.min(2000 * retryCount, 10000));
+            function flush() {
+                if (sb && !sb.updating && queue.length) {
+                    sb.appendBuffer(queue.shift());
+                }
+                if (video.buffered.length && video.buffered.end(0) - video.currentTime > 2) {
+                    video.currentTime = video.buffered.end(0) - 0.5;
+                }
+                while (queue.length > 10) queue.shift();
             }
+
+            video.oncanplay = () => video.play();
+            ws.onclose = () => setTimeout(connect, 2000);
+            ws.onerror = () => ws.close();
         }
 
         connect();
