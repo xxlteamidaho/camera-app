@@ -95,28 +95,19 @@
             50% { opacity: 0.5; }
         }
 
-        /* Anti burn-in animations */
+        /* Anti burn-in animations - very subtle */
         @keyframes subtleShift {
             0%, 100% { transform: translate(0, 0); }
-            25% { transform: translate(2px, 1px); }
-            50% { transform: translate(0, 2px); }
-            75% { transform: translate(-2px, 1px); }
-        }
-        @keyframes subtleFade {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.95; }
+            50% { transform: translate(1px, 1px); }
         }
         .weather-panel {
-            animation: subtleShift 120s ease-in-out infinite;
-        }
-        .camera-header {
-            animation: subtleFade 60s ease-in-out infinite;
+            animation: subtleShift 300s linear infinite;
         }
         .current-weather {
-            animation: subtleShift 90s ease-in-out infinite reverse;
+            animation: subtleShift 360s linear infinite reverse;
         }
         .datetime {
-            animation: subtleShift 100s ease-in-out infinite;
+            animation: subtleShift 400s linear infinite;
         }
 
         /* Weather Panel */
