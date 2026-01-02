@@ -12,12 +12,13 @@
     <script>
         const src = new URLSearchParams(location.search).get('src');
         const video = document.getElementById('video');
+        const BUFFER_TARGET = 3; // 3 second buffer
 
         function connect() {
             const ws = new WebSocket(`ws://${location.hostname}:1984/api/ws?src=${src}`);
             ws.binaryType = 'arraybuffer';
 
-            let ms, sb, queue = [];
+            let ms, sb, queue = [], started = false;
 
             ws.onopen = () => ws.send(JSON.stringify({type: 'mse'}));
 
@@ -28,9 +29,13 @@
                         ms = new MediaSource();
                         video.src = URL.createObjectURL(ms);
                         ms.onsourceopen = () => {
-                            sb = ms.addSourceBuffer(msg.value);
-                            sb.mode = 'segments';
-                            sb.onupdateend = flush;
+                            try {
+                                sb = ms.addSourceBuffer(msg.value);
+                                sb.mode = 'segments';
+                                sb.onupdateend = flush;
+                            } catch(e) {
+                                console.error(e);
+                            }
                         };
                     }
                 } else if (sb) {
@@ -40,17 +45,38 @@
             };
 
             function flush() {
-                if (sb && !sb.updating && queue.length) {
+                if (!sb || sb.updating || !queue.length) return;
+
+                try {
                     sb.appendBuffer(queue.shift());
+                } catch(e) {
+                    queue.length = 0;
+                    return;
                 }
-                if (video.buffered.length && video.buffered.end(0) - video.currentTime > 2) {
-                    video.currentTime = video.buffered.end(0) - 0.5;
+
+                // Wait for 3s buffer before starting playback
+                if (video.buffered.length > 0) {
+                    const buffered = video.buffered.end(0) - video.buffered.start(0);
+
+                    if (!started && buffered >= BUFFER_TARGET) {
+                        video.play().catch(() => {});
+                        started = true;
+                    }
+
+                    // Keep buffer around target, don't let it grow too much
+                    if (video.buffered.end(0) - video.currentTime > BUFFER_TARGET + 2) {
+                        video.currentTime = video.buffered.end(0) - BUFFER_TARGET;
+                    }
                 }
-                while (queue.length > 10) queue.shift();
+
+                // Limit queue
+                while (queue.length > 30) queue.shift();
             }
 
-            video.oncanplay = () => video.play();
-            ws.onclose = () => setTimeout(connect, 2000);
+            ws.onclose = () => {
+                started = false;
+                setTimeout(connect, 2000);
+            };
             ws.onerror = () => ws.close();
         }
 
