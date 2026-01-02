@@ -14,42 +14,120 @@
         const src = params.get('src');
         const video = document.getElementById('video');
 
+        let reconnectDelay = 1000;
+        const maxReconnectDelay = 30000;
+
         function connect() {
             const ws = new WebSocket(`ws://${location.hostname}:1984/api/ws?src=${src}`);
             ws.binaryType = 'arraybuffer';
 
             let ms, sb, queue = [];
+            let lastDataTime = Date.now();
+            let stallCheckInterval;
 
-            ws.onopen = () => ws.send(JSON.stringify({type: 'mse'}));
+            ws.onopen = () => {
+                ws.send(JSON.stringify({type: 'mse'}));
+                reconnectDelay = 1000;
+            };
 
             ws.onmessage = (e) => {
+                lastDataTime = Date.now();
+
                 if (typeof e.data === 'string') {
                     const msg = JSON.parse(e.data);
                     if (msg.type === 'mse') {
+                        // Cleanup previous MediaSource
+                        if (ms && ms.readyState === 'open') {
+                            try { ms.endOfStream(); } catch(err) {}
+                        }
+
                         ms = new MediaSource();
                         video.src = URL.createObjectURL(ms);
+
                         ms.addEventListener('sourceopen', () => {
-                            sb = ms.addSourceBuffer(msg.value);
-                            sb.mode = 'segments';
-                            sb.addEventListener('updateend', () => {
-                                if (queue.length && !sb.updating) {
-                                    sb.appendBuffer(queue.shift());
-                                }
-                            });
+                            try {
+                                sb = ms.addSourceBuffer(msg.value);
+                                sb.mode = 'segments';
+                                sb.addEventListener('updateend', processQueue);
+                            } catch(err) {
+                                console.error('SourceBuffer error:', err);
+                                ws.close();
+                            }
                         });
+
                         video.play().catch(() => {});
+
+                        // Start stall detection
+                        clearInterval(stallCheckInterval);
+                        stallCheckInterval = setInterval(() => {
+                            // Check for data stall
+                            if (Date.now() - lastDataTime > 10000) {
+                                console.log('Data stall detected, reconnecting...');
+                                ws.close();
+                                return;
+                            }
+
+                            // Trim old buffer to prevent memory issues
+                            if (sb && !sb.updating && ms.readyState === 'open') {
+                                const buffered = sb.buffered;
+                                if (buffered.length > 0) {
+                                    const currentTime = video.currentTime;
+                                    const bufferStart = buffered.start(0);
+                                    // Remove buffer more than 30s behind playhead
+                                    if (currentTime - bufferStart > 30) {
+                                        try {
+                                            sb.remove(bufferStart, currentTime - 10);
+                                        } catch(err) {}
+                                    }
+                                }
+                            }
+
+                            // Fix playback stalls - jump to live edge
+                            if (video.paused && sb && sb.buffered.length > 0) {
+                                video.currentTime = sb.buffered.end(sb.buffered.length - 1) - 0.5;
+                                video.play().catch(() => {});
+                            } else if (sb && sb.buffered.length > 0) {
+                                const bufferedEnd = sb.buffered.end(sb.buffered.length - 1);
+                                // If we're more than 5s behind live, jump forward
+                                if (bufferedEnd - video.currentTime > 5) {
+                                    video.currentTime = bufferedEnd - 0.5;
+                                }
+                            }
+                        }, 3000);
                     }
                 } else {
-                    if (sb && !sb.updating && ms.readyState === 'open') {
-                        sb.appendBuffer(e.data);
+                    if (sb && !sb.updating && ms && ms.readyState === 'open') {
+                        try {
+                            sb.appendBuffer(e.data);
+                        } catch(err) {
+                            console.error('AppendBuffer error:', err);
+                            queue.length = 0;
+                        }
                     } else if (sb) {
                         queue.push(e.data);
-                        if (queue.length > 50) queue.shift();
+                        // Limit queue size
+                        while (queue.length > 30) queue.shift();
                     }
                 }
             };
 
-            ws.onclose = () => setTimeout(connect, 2000);
+            function processQueue() {
+                if (queue.length > 0 && sb && !sb.updating && ms && ms.readyState === 'open') {
+                    try {
+                        sb.appendBuffer(queue.shift());
+                    } catch(err) {
+                        queue.length = 0;
+                    }
+                }
+            }
+
+            ws.onclose = () => {
+                clearInterval(stallCheckInterval);
+                console.log(`Reconnecting in ${reconnectDelay}ms...`);
+                setTimeout(connect, reconnectDelay);
+                reconnectDelay = Math.min(reconnectDelay * 1.5, maxReconnectDelay);
+            };
+
             ws.onerror = () => ws.close();
         }
 
