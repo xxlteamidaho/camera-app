@@ -320,6 +320,7 @@
             let mediaSource = null;
             let sourceBuffer = null;
             let queue = [];
+            let mseCodec = null;
 
             const ws = new WebSocket(`ws://${window.location.hostname}:1984/api/ws?src=${stream}`);
             ws.binaryType = 'arraybuffer';
@@ -332,16 +333,20 @@
                 if (typeof event.data === 'string') {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'mse') {
+                        mseCodec = msg.value;
                         mediaSource = new MediaSource();
                         video.src = URL.createObjectURL(mediaSource);
 
                         mediaSource.addEventListener('sourceopen', () => {
+                            if (mediaSource.readyState !== 'open') return;
                             try {
-                                sourceBuffer = mediaSource.addSourceBuffer(msg.value);
+                                sourceBuffer = mediaSource.addSourceBuffer(mseCodec);
                                 sourceBuffer.mode = 'segments';
                                 sourceBuffer.addEventListener('updateend', () => {
-                                    if (queue.length > 0 && !sourceBuffer.updating) {
-                                        sourceBuffer.appendBuffer(queue.shift());
+                                    if (queue.length > 0 && !sourceBuffer.updating && mediaSource.readyState === 'open') {
+                                        try {
+                                            sourceBuffer.appendBuffer(queue.shift());
+                                        } catch (e) {}
                                     }
                                     // Keep buffer small to reduce latency
                                     if (video.buffered.length > 0) {
@@ -351,23 +356,21 @@
                                         }
                                     }
                                 });
+                                video.play().catch(() => {});
                             } catch (e) {
                                 console.error('SourceBuffer error:', e);
                             }
                         });
-
-                        video.play().catch(() => {});
                     }
                 } else if (event.data instanceof ArrayBuffer) {
-                    if (sourceBuffer && !sourceBuffer.updating && mediaSource.readyState === 'open') {
+                    if (sourceBuffer && !sourceBuffer.updating && mediaSource && mediaSource.readyState === 'open') {
                         try {
                             sourceBuffer.appendBuffer(event.data);
                         } catch (e) {
                             queue.push(event.data);
                         }
-                    } else if (sourceBuffer) {
+                    } else if (mediaSource && mediaSource.readyState === 'open') {
                         queue.push(event.data);
-                        // Limit queue size
                         if (queue.length > 10) queue.shift();
                     }
                 }
