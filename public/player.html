@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- v2 -->
 <html>
 <head>
     <style>
@@ -11,7 +12,7 @@
     <iframe id="player" allowfullscreen></iframe>
     <script>
         const src = new URLSearchParams(location.search).get('src');
-        document.getElementById('player').src = `http://${location.hostname}:1984/stream.html?src=${src}&mode=mse`;
+        document.getElementById('player').src = 'http://' + location.hostname + ':1984/stream.html?src=' + src + '&mode=mse';
     </script>
 </body>
 </html>

@@ -10,6 +10,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --production
 
+# Cache bust v2
 COPY . .
 
 # Create startup script
