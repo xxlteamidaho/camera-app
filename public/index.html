@@ -34,12 +34,11 @@
             padding: 4px;
         }
         .camera-card {
-            background: linear-gradient(145deg, #1a1a2e, #0f0f1a);
+            background: #000;
             position: relative;
             overflow: hidden;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.05);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.1);
         }
         video {
             width: 100%;
@@ -297,23 +296,13 @@
                     const card = document.createElement('div');
                     card.className = 'camera-card';
 
-                    // Use video element with MP4 stream (simpler, more reliable)
-                    const video = document.createElement('video');
-                    video.src = `http://${window.location.hostname}:1984/api/stream.mp4?src=${camera.stream}`;
-                    video.autoplay = true;
-                    video.muted = true;
-                    video.playsInline = true;
-                    video.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:12px;';
+                    // Use go2rtc player with WebRTC mode (most efficient)
+                    const iframe = document.createElement('iframe');
+                    iframe.src = `http://${window.location.hostname}:1984/stream.html?src=${camera.stream}&mode=webrtc`;
+                    iframe.style.cssText = 'width:100%;height:100%;border:none;background:#000;';
+                    iframe.allow = 'autoplay';
 
-                    // Reconnect on error
-                    video.onerror = () => {
-                        setTimeout(() => {
-                            video.src = `http://${window.location.hostname}:1984/api/stream.mp4?src=${camera.stream}`;
-                            video.play().catch(() => {});
-                        }, 3000);
-                    };
-
-                    card.appendChild(video);
+                    card.appendChild(iframe);
                     grid.appendChild(card);
                 });
 
