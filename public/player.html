@@ -4,83 +4,14 @@
     <style>
         * { margin: 0; padding: 0; }
         html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-        video { width: 100%; height: 100%; object-fit: contain; }
+        iframe { width: 100%; height: 100%; border: none; }
     </style>
 </head>
 <body>
-    <video id="video" autoplay muted playsinline></video>
+    <iframe id="player" allowfullscreen></iframe>
     <script>
         const src = new URLSearchParams(location.search).get('src');
-        const video = document.getElementById('video');
-        const BUFFER_TARGET = 3; // 3 second buffer
-
-        function connect() {
-            const ws = new WebSocket(`ws://${location.hostname}:1984/api/ws?src=${src}`);
-            ws.binaryType = 'arraybuffer';
-
-            let ms, sb, queue = [], started = false;
-
-            ws.onopen = () => ws.send(JSON.stringify({type: 'mse'}));
-
-            ws.onmessage = (e) => {
-                if (typeof e.data === 'string') {
-                    const msg = JSON.parse(e.data);
-                    if (msg.type === 'mse') {
-                        ms = new MediaSource();
-                        video.src = URL.createObjectURL(ms);
-                        ms.onsourceopen = () => {
-                            try {
-                                sb = ms.addSourceBuffer(msg.value);
-                                sb.mode = 'segments';
-                                sb.onupdateend = flush;
-                            } catch(e) {
-                                console.error(e);
-                            }
-                        };
-                    }
-                } else if (sb) {
-                    queue.push(e.data);
-                    flush();
-                }
-            };
-
-            function flush() {
-                if (!sb || sb.updating || !queue.length) return;
-
-                try {
-                    sb.appendBuffer(queue.shift());
-                } catch(e) {
-                    queue.length = 0;
-                    return;
-                }
-
-                // Wait for 3s buffer before starting playback
-                if (video.buffered.length > 0) {
-                    const buffered = video.buffered.end(0) - video.buffered.start(0);
-
-                    if (!started && buffered >= BUFFER_TARGET) {
-                        video.play().catch(() => {});
-                        started = true;
-                    }
-
-                    // Keep buffer around target, don't let it grow too much
-                    if (video.buffered.end(0) - video.currentTime > BUFFER_TARGET + 2) {
-                        video.currentTime = video.buffered.end(0) - BUFFER_TARGET;
-                    }
-                }
-
-                // Limit queue
-                while (queue.length > 30) queue.shift();
-            }
-
-            ws.onclose = () => {
-                started = false;
-                setTimeout(connect, 2000);
-            };
-            ws.onerror = () => ws.close();
-        }
-
-        connect();
+        document.getElementById('player').src = `http://${location.hostname}:1984/stream.html?src=${src}&mode=mse`;
     </script>
 </body>
 </html>
