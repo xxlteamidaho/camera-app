@@ -1,7 +1,7 @@
 FROM node:18-alpine
 
-# Install dependencies and go2rtc
-RUN apk add --no-cache wget supervisor
+# Install dependencies, go2rtc, and FFmpeg for transcoding
+RUN apk add --no-cache wget supervisor ffmpeg
 
 # Download go2rtc binary
 RUN wget -O /usr/local/bin/go2rtc https://github.com/AlexxIT/go2rtc/releases/latest/download/go2rtc_linux_amd64 && \
