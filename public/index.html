@@ -315,39 +315,60 @@
             }
         }
 
-        // Connect to go2rtc using MSE
+        // Connect to go2rtc using MSE with proper buffer management
         function connectMSE(video, stream) {
+            let mediaSource = null;
+            let sourceBuffer = null;
+            let queue = [];
+
             const ws = new WebSocket(`ws://${window.location.hostname}:1984/api/ws?src=${stream}`);
+            ws.binaryType = 'arraybuffer';
 
             ws.onopen = () => {
                 ws.send(JSON.stringify({ type: 'mse', value: '' }));
             };
 
-            ws.onmessage = async (event) => {
+            ws.onmessage = (event) => {
                 if (typeof event.data === 'string') {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'mse') {
-                        const mediaSource = new MediaSource();
+                        mediaSource = new MediaSource();
                         video.src = URL.createObjectURL(mediaSource);
 
                         mediaSource.addEventListener('sourceopen', () => {
-                            const sourceBuffer = mediaSource.addSourceBuffer(msg.value);
-                            sourceBuffer.mode = 'segments';
-
-                            ws.onmessage = (e) => {
-                                if (e.data instanceof Blob) {
-                                    e.data.arrayBuffer().then(buffer => {
-                                        if (!sourceBuffer.updating && mediaSource.readyState === 'open') {
-                                            try {
-                                                sourceBuffer.appendBuffer(buffer);
-                                            } catch (err) {
-                                                console.log('Buffer error, reconnecting...');
-                                            }
+                            try {
+                                sourceBuffer = mediaSource.addSourceBuffer(msg.value);
+                                sourceBuffer.mode = 'segments';
+                                sourceBuffer.addEventListener('updateend', () => {
+                                    if (queue.length > 0 && !sourceBuffer.updating) {
+                                        sourceBuffer.appendBuffer(queue.shift());
+                                    }
+                                    // Keep buffer small to reduce latency
+                                    if (video.buffered.length > 0) {
+                                        const end = video.buffered.end(0);
+                                        if (end - video.currentTime > 5) {
+                                            video.currentTime = end - 1;
                                         }
-                                    });
-                                }
-                            };
+                                    }
+                                });
+                            } catch (e) {
+                                console.error('SourceBuffer error:', e);
+                            }
                         });
+
+                        video.play().catch(() => {});
+                    }
+                } else if (event.data instanceof ArrayBuffer) {
+                    if (sourceBuffer && !sourceBuffer.updating && mediaSource.readyState === 'open') {
+                        try {
+                            sourceBuffer.appendBuffer(event.data);
+                        } catch (e) {
+                            queue.push(event.data);
+                        }
+                    } else if (sourceBuffer) {
+                        queue.push(event.data);
+                        // Limit queue size
+                        if (queue.length > 10) queue.shift();
                     }
                 }
             };
@@ -357,6 +378,9 @@
             };
 
             ws.onclose = () => {
+                if (mediaSource && mediaSource.readyState === 'open') {
+                    try { mediaSource.endOfStream(); } catch(e) {}
+                }
                 setTimeout(() => connectMSE(video, stream), 3000);
             };
         }
