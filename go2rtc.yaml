@@ -14,6 +14,6 @@ ffmpeg:
 
 streams:
   camera1: ${CAMERA_1_URL}
-  camera2: ${CAMERA_2_URL}
-  camera3: ${CAMERA_3_URL}
-  camera4: ${CAMERA_4_URL}
+  camera2: "ffmpeg:${CAMERA_2_URL}#video=h264"
+  camera3: "ffmpeg:${CAMERA_3_URL}#video=h264"
+  camera4: "ffmpeg:${CAMERA_4_URL}#video=h264"
