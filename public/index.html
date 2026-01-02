@@ -296,9 +296,9 @@
                     const card = document.createElement('div');
                     card.className = 'camera-card';
 
-                    // Use go2rtc's built-in stream player
+                    // Use custom MSE player
                     const iframe = document.createElement('iframe');
-                    iframe.src = `http://${location.hostname}:1984/stream.html?src=${camera.stream}&mode=mse`;
+                    iframe.src = `/player.html?src=${camera.stream}`;
                     iframe.style.cssText = 'width:100%;height:100%;border:none;background:#000;';
                     iframe.allow = 'autoplay';
 
