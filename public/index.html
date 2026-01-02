@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVR Camera Viewer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        #camera-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .camera-card {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .camera-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 0 5px;
+        }
+        .camera-name {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        canvas {
+            width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 4px;
+            background-color: #000;
+            aspect-ratio: 16/9;
+        }
+        .status {
+            font-size: 0.8em;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <h1>My NVR Cameras</h1>
+    <div id="camera-grid">
+        <!-- Cameras will be loaded here -->
+    </div>
+
+    <!-- JSMpeg Player -->
+    <script src="https://jsmpeg.com/jsmpeg.min.js"></script>
+    <script>
+        async function loadCameras() {
+            try {
+                const response = await fetch('/api/cameras');
+                const cameras = await response.json();
+                const grid = document.getElementById('camera-grid');
+
+                if (cameras.length === 0) {
+                    grid.innerHTML = '<p style="text-align:center; grid-column: 1/-1;">No cameras configured.</p>';
+                    return;
+                }
+
+                cameras.forEach(camera => {
+                    const card = document.createElement('div');
+                    card.className = 'camera-card';
+                    
+                    const header = document.createElement('div');
+                    header.className = 'camera-header';
+                    header.innerHTML = `<span class="camera-name">${camera.name}</span><span class="status" id="status-${camera.id}">Connecting...</span>`;
+                    
+                    const canvas = document.createElement('canvas');
+                    canvas.id = `canvas-${camera.id}`;
+                    
+                    card.appendChild(header);
+                    card.appendChild(canvas);
+                    grid.appendChild(card);
+
+                    // Initialize JSMpeg Player
+                    // Construct WebSocket URL based on current location
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.host}/stream/${camera.id}`;
+
+                    new JSMpeg.Player(wsUrl, {
+                        canvas: canvas,
+                        autoplay: true,
+                        audio: false,
+                        onPlay: () => {
+                            document.getElementById(`status-${camera.id}`).innerText = 'Live';
+                            document.getElementById(`status-${camera.id}`).style.color = '#4caf50';
+                        }
+                    });
+                });
+
+            } catch (error) {
+                console.error('Error loading cameras:', error);
+                document.getElementById('camera-grid').innerHTML = '<p style="text-align:center; color: red;">Error loading cameras. Check console.</p>';
+            }
+        }
+
+        loadCameras();
+    </script>
+</body>
+</html>
