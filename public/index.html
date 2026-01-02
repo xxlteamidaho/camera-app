@@ -296,9 +296,9 @@
                     const card = document.createElement('div');
                     card.className = 'camera-card';
 
-                    // player.html embeds go2rtc stream
+                    // Direct go2rtc stream embed
                     const iframe = document.createElement('iframe');
-                    iframe.src = `/player.html?src=${camera.stream}`;
+                    iframe.src = 'http://' + location.hostname + ':1984/stream.html?src=' + camera.stream;
                     iframe.style.cssText = 'width:100%;height:100%;border:none;background:#000;';
                     iframe.allow = 'autoplay';
 
