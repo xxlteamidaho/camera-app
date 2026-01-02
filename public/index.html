@@ -297,17 +297,14 @@
                     const card = document.createElement('div');
                     card.className = 'camera-card';
 
-                    const video = document.createElement('video');
-                    video.id = `video-${camera.id}`;
-                    video.autoplay = true;
-                    video.muted = true;
-                    video.playsInline = true;
+                    // Use go2rtc's built-in player via iframe
+                    const iframe = document.createElement('iframe');
+                    iframe.src = `http://${window.location.hostname}:1984/stream.html?src=${camera.stream}&mode=mse`;
+                    iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:12px;';
+                    iframe.allow = 'autoplay';
 
-                    card.appendChild(video);
+                    card.appendChild(iframe);
                     grid.appendChild(card);
-
-                    // Connect to go2rtc MSE stream
-                    connectMSE(video, camera.stream);
                 });
 
             } catch (error) {
