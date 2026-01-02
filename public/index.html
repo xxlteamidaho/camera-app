@@ -350,19 +350,9 @@
                     const card = document.createElement('div');
                     card.className = 'camera-card';
 
-                    const header = document.createElement('div');
-                    header.className = 'camera-header';
-                    header.innerHTML = `
-                        <span class="camera-name">${camera.name}</span>
-                        <span class="status">
-                            <span class="status-dot" id="dot-${camera.id}"></span>
-                            <span id="status-${camera.id}">Connecting</span>
-                        </span>`;
-
                     const canvas = document.createElement('canvas');
                     canvas.id = `canvas-${camera.id}`;
 
-                    card.appendChild(header);
                     card.appendChild(canvas);
                     grid.appendChild(card);
 
@@ -372,11 +362,7 @@
                     new JSMpeg.Player(wsUrl, {
                         canvas: canvas,
                         autoplay: true,
-                        audio: false,
-                        onPlay: () => {
-                            document.getElementById(`status-${camera.id}`).innerText = 'Live';
-                            document.getElementById(`dot-${camera.id}`).classList.add('live');
-                        }
+                        audio: false
                     });
                 });
 
