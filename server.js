@@ -56,20 +56,12 @@ app.get('/api/cameras', (req, res) => {
 });
 
 // WebSocket relay for each camera (with validation)
-// Optimized FFmpeg settings to reduce CPU usage
 cameras.forEach(camera => {
     if (Number.isInteger(camera.id) && camera.id > 0) {
         app.ws(`/stream/${camera.id}`, proxy({
             url: camera.url,
             verbose: false,
             transport: 'tcp',
-            additionalFlags: [
-                '-r', '15',              // Limit to 15 fps (reduces CPU)
-                '-q:v', '20',            // Lower quality (1-31, higher = lower quality)
-                '-preset', 'ultrafast',  // Fastest encoding preset
-                '-tune', 'zerolatency',  // Low latency
-                '-s', '640x360',         // Scale down resolution
-            ],
         }));
     }
 });
