@@ -14,121 +14,73 @@
         const src = params.get('src');
         const video = document.getElementById('video');
 
+        let pc = null;
         let reconnectDelay = 1000;
-        const maxReconnectDelay = 30000;
 
-        function connect() {
-            const ws = new WebSocket(`ws://${location.hostname}:1984/api/ws?src=${src}`);
-            ws.binaryType = 'arraybuffer';
-
-            let ms, sb, queue = [];
-            let lastDataTime = Date.now();
-            let stallCheckInterval;
-
-            ws.onopen = () => {
-                ws.send(JSON.stringify({type: 'mse'}));
-                reconnectDelay = 1000;
-            };
-
-            ws.onmessage = (e) => {
-                lastDataTime = Date.now();
-
-                if (typeof e.data === 'string') {
-                    const msg = JSON.parse(e.data);
-                    if (msg.type === 'mse') {
-                        // Cleanup previous MediaSource
-                        if (ms && ms.readyState === 'open') {
-                            try { ms.endOfStream(); } catch(err) {}
-                        }
-
-                        ms = new MediaSource();
-                        video.src = URL.createObjectURL(ms);
-
-                        ms.addEventListener('sourceopen', () => {
-                            try {
-                                sb = ms.addSourceBuffer(msg.value);
-                                sb.mode = 'segments';
-                                sb.addEventListener('updateend', processQueue);
-                            } catch(err) {
-                                console.error('SourceBuffer error:', err);
-                                ws.close();
-                            }
-                        });
-
-                        video.play().catch(() => {});
-
-                        // Start stall detection
-                        clearInterval(stallCheckInterval);
-                        stallCheckInterval = setInterval(() => {
-                            // Check for data stall
-                            if (Date.now() - lastDataTime > 10000) {
-                                console.log('Data stall detected, reconnecting...');
-                                ws.close();
-                                return;
-                            }
-
-                            // Trim old buffer to prevent memory issues
-                            if (sb && !sb.updating && ms.readyState === 'open') {
-                                const buffered = sb.buffered;
-                                if (buffered.length > 0) {
-                                    const currentTime = video.currentTime;
-                                    const bufferStart = buffered.start(0);
-                                    // Remove buffer more than 30s behind playhead
-                                    if (currentTime - bufferStart > 30) {
-                                        try {
-                                            sb.remove(bufferStart, currentTime - 10);
-                                        } catch(err) {}
-                                    }
-                                }
-                            }
-
-                            // Fix playback stalls - jump to live edge
-                            if (video.paused && sb && sb.buffered.length > 0) {
-                                video.currentTime = sb.buffered.end(sb.buffered.length - 1) - 0.5;
-                                video.play().catch(() => {});
-                            } else if (sb && sb.buffered.length > 0) {
-                                const bufferedEnd = sb.buffered.end(sb.buffered.length - 1);
-                                // If we're more than 5s behind live, jump forward
-                                if (bufferedEnd - video.currentTime > 5) {
-                                    video.currentTime = bufferedEnd - 0.5;
-                                }
-                            }
-                        }, 3000);
-                    }
-                } else {
-                    if (sb && !sb.updating && ms && ms.readyState === 'open') {
-                        try {
-                            sb.appendBuffer(e.data);
-                        } catch(err) {
-                            console.error('AppendBuffer error:', err);
-                            queue.length = 0;
-                        }
-                    } else if (sb) {
-                        queue.push(e.data);
-                        // Limit queue size
-                        while (queue.length > 30) queue.shift();
-                    }
-                }
-            };
-
-            function processQueue() {
-                if (queue.length > 0 && sb && !sb.updating && ms && ms.readyState === 'open') {
-                    try {
-                        sb.appendBuffer(queue.shift());
-                    } catch(err) {
-                        queue.length = 0;
-                    }
-                }
+        async function connect() {
+            // Cleanup previous connection
+            if (pc) {
+                pc.close();
+                pc = null;
             }
 
-            ws.onclose = () => {
-                clearInterval(stallCheckInterval);
-                console.log(`Reconnecting in ${reconnectDelay}ms...`);
-                setTimeout(connect, reconnectDelay);
-                reconnectDelay = Math.min(reconnectDelay * 1.5, maxReconnectDelay);
-            };
+            try {
+                pc = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
 
-            ws.onerror = () => ws.close();
+                pc.ontrack = (event) => {
+                    video.srcObject = event.streams[0];
+                    video.play().catch(() => {});
+                };
+
+                pc.oniceconnectionstatechange = () => {
+                    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                        console.log('ICE connection failed, reconnecting...');
+                        setTimeout(connect, reconnectDelay);
+                    }
+                };
+
+                // Create offer
+                pc.addTransceiver('video', { direction: 'recvonly' });
+                pc.addTransceiver('audio', { direction: 'recvonly' });
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                // Wait for ICE gathering
+                await new Promise((resolve) => {
+                    if (pc.iceGatheringState === 'complete') {
+                        resolve();
+                    } else {
+                        pc.onicegatheringstatechange = () => {
+                            if (pc.iceGatheringState === 'complete') resolve();
+                        };
+                        // Timeout after 3s
+                        setTimeout(resolve, 3000);
+                    }
+                });
+
+                // Send offer to go2rtc
+                const response = await fetch(`http://${location.hostname}:1984/api/webrtc?src=${src}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/sdp' },
+                    body: pc.localDescription.sdp
+                });
+
+                if (!response.ok) throw new Error('WebRTC setup failed');
+
+                const answer = await response.text();
+                await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+
+                reconnectDelay = 1000;
+                console.log('WebRTC connected');
+
+            } catch (err) {
+                console.error('WebRTC error:', err);
+                reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+                setTimeout(connect, reconnectDelay);
+            }
         }
 
         connect();
