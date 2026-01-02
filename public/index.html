@@ -297,13 +297,23 @@
                     const card = document.createElement('div');
                     card.className = 'camera-card';
 
-                    // Use go2rtc's built-in player via iframe with buffering
-                    const iframe = document.createElement('iframe');
-                    iframe.src = `http://${window.location.hostname}:1984/stream.html?src=${camera.stream}&mode=mse&buffer=3000`;
-                    iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:12px;background:#0a0a0a;';
-                    iframe.allow = 'autoplay';
+                    // Use video element with MP4 stream (simpler, more reliable)
+                    const video = document.createElement('video');
+                    video.src = `http://${window.location.hostname}:1984/api/stream.mp4?src=${camera.stream}`;
+                    video.autoplay = true;
+                    video.muted = true;
+                    video.playsInline = true;
+                    video.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:12px;';
 
-                    card.appendChild(iframe);
+                    // Reconnect on error
+                    video.onerror = () => {
+                        setTimeout(() => {
+                            video.src = `http://${window.location.hostname}:1984/api/stream.mp4?src=${camera.stream}`;
+                            video.play().catch(() => {});
+                        }, 3000);
+                    };
+
+                    card.appendChild(video);
                     grid.appendChild(card);
                 });
 
